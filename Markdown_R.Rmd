@@ -1,0 +1,100 @@
+---
+title: "Coursera Practical Machine Learning"
+author: "Christel"
+date: "20-7-2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+
+```{r, echo=FALSE}
+setwd("/Users/christel/desktop/coursera week8")
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+library(parallel)
+library(doParallel)
+```
+
+## Loading data and preprocessing
+
+Load data from local file. Remove the feature columns that carry no information (timestamps etc.) and with Near Zero Variance. Columns that are mostly NA are also removed. This is also done for the test data, so the columns match the columns from the training data.
+
+```{r}
+# Load the data
+train_data <- read.csv('pml-training.csv')
+test_data <- read.csv('pml-testing.csv')
+
+# Filter the columns
+train_data <- train_data[,8:dim(train_data)[2]]
+test_data <- test_data[,8:dim(test_data)[2]]
+NZV <- nearZeroVar(train_data)
+train_data <- train_data[, -NZV]
+test_data  <- test_data[, -NZV]
+AllNA    <- sapply(train_data, function(x) mean(is.na(x))) > 0.95
+train_data <- train_data[, AllNA==FALSE]
+test_data  <- test_data[, AllNA==FALSE]
+
+# Split the data
+set.seed(122334444)
+part <- createDataPartition(y=train_data$classe, p=0.7, list=FALSE)
+train <- train_data[part,]
+validation <- train_data[-part,]
+```
+
+## Train models
+
+Try Random Forests and linear SVM's. The 'number=5' argument means 5-fold cross validation is used.
+
+```{r}
+## make the training go faster ##
+cl <- makeCluster(detectCores() - 1)
+registerDoParallel(cl)
+# Train two models: Random Forest and SVM
+model1 <- train(classe ~., data=train, method='rf', number=5)
+model2 <- train(classe ~., data=train, method="svmLinear", number=5)
+stopCluster(cl)
+```
+
+## Report performance
+
+```{r}
+# Check performance and confusion matrix
+predict_rf <- predict(model1, newdata=validation)
+conf1 <- confusionMatrix(predict_rf, validation$classe)
+print(conf1)
+predict_svm <- predict(model2, newdata=validation)
+conf2 <- confusionMatrix(predict_svm, validation$classe)
+print(conf2)
+```
+
+Random Forests perform a lot better than SVM's, so for the prediction of the test data the RF will be used. The reported performance is on a validation set that was split earlier, making it unlikely that the high performance is a result of overfitting.
+
+## Predict classes for testset
+```{r}
+# Predict classes for test data
+predict_test <- predict(model1, newdata=test_data)
+print(predict_test)
+```
+
+
+
